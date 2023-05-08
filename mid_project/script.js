@@ -288,6 +288,10 @@ const Controller = ((view, model)=>{
 
         btn.addEventListener('click', ()=>{
             state.newFail = 0;
+            state.newSuccess = 0;
+            state.newHiddenLetters = {};
+            state.newFullWord = '';
+            state.newGuessingWord = '';
             const newData = Api.getData();
             newData.then((data) => {
                 state.newWord = data[0]
