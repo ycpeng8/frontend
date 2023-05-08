@@ -52,3 +52,7 @@ body {
 .btn_new_game:hover {
     background-color: #0056B3;
 }
+
+.guess_list {
+    list-style-type: none;
+}

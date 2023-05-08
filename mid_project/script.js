@@ -51,7 +51,8 @@ const View = (()=>{
         fail: "#fail",
         word: "#word",
         inputBox: "#guessText",
-        btn:"#newGameBtn"
+        btn:"#newGameBtn",
+        history: "#guessList"
     }
 
     const createWordTmp = (word)=>{
@@ -76,6 +77,14 @@ const View = (()=>{
         return timer_tmp;
     }
 
+    const historyTmp = (guessDict)=>{
+        let history_tmp = '';
+        Object.keys(guessDict).forEach((guess)=>{
+            history_tmp += `<li style="color:${guessDict[guess]};">${guess}</li>`;
+        });
+        return history_tmp;
+    }
+
     const render = (ele, template)=>{
         ele.innerHTML = template;
     }
@@ -86,12 +95,13 @@ const View = (()=>{
         createFailTmp,
         emptyInput,
         timerTmp,
+        historyTmp,
         render
     }
 })();
 
 const Model = ((api, view)=>{
-    const { domSelector, createWordTmp, createFailTmp, emptyInput, timerTmp, render } = view;
+    const { domSelector, createWordTmp, createFailTmp, emptyInput, timerTmp, historyTmp, render } = view;
     const { getData } = api;
 
     class State{
@@ -105,6 +115,8 @@ const Model = ((api, view)=>{
             this._guessing_word = '';
             this._full_word = '';
             this._timer = 60;
+            this._history = {};
+            // history {key: guess, value: color}
         }
 
         get getFail(){
@@ -214,6 +226,17 @@ const Model = ((api, view)=>{
             render(timer_selector, timer_tmp);
         }
 
+        get getHistory(){
+            return this._history;
+        }
+
+        set newHistory(newHistory){
+            this._history = newHistory;
+            let history_selector = document.querySelector(domSelector.history);
+            let history_tmp = historyTmp(this._history);
+            render(history_selector, history_tmp);
+        }
+
     }
 
     return {
@@ -241,6 +264,7 @@ const Controller = ((view, model)=>{
                 state.newFullWord = '';
                 state.newGuessingWord = '';
                 state.newTimer = 60;
+                state.newHistory = {};
                 const newData = Api.getData();
                 newData.then((data) => {
                     state.newWord = data[0]
@@ -268,11 +292,22 @@ const Controller = ((view, model)=>{
         startTimer();
     }
 
+    const checkHistory = (guess, history) => {
+        for (let letter in history)
+        {
+            if (letter === guess)
+            {
+                alert("You have already guessed this letter!")
+                return true; // exist in history
+            }
+        }
+        return false;
+    }
+
     // Add event listeners
     const addGuess = () => {
         const userGuess = document.querySelector(domSelector.inputBox);
         const btn = document.querySelector(domSelector.btn);
-        let timeId = null;
 
         // inputBox control
         userGuess.addEventListener('keyup', ({key}) => {
@@ -280,62 +315,74 @@ const Controller = ((view, model)=>{
             {
                 let guess = userGuess.value;
                 let hidden_letters = state.getHiddenLetters;
+                let history = state.getHistory;
                 let after_guess_hidden_letters = {};
                 Object.keys(hidden_letters).filter(key => hidden_letters[key] !== guess )
                                            .forEach(key => after_guess_hidden_letters[key] = hidden_letters[key]);
                 if (Object.keys(after_guess_hidden_letters).length === Object.keys(hidden_letters).length) 
                 {
                     // guess wrong
-                    let fail = state.getFail + 1;
-                    if (fail === 11) 
+                    if (!checkHistory(guess, history))
                     {
-                        // Game over and start new game
-                        stopTimer();
-                        alert("Game over! You have guessed " + String(state.getSuccess) + " words!");
-                        state.newFail = 0;
-                        state.newSuccess = 0;
-                        state.newHiddenLetters = {};
-                        state.newFullWord = '';
-                        state.newGuessingWord = '';
-                        state.newTimer = 60;
-                        const newData = Api.getData();
-                        newData.then((data) => {
-                            state.newWord = data[0]
-                        });
-                        startTimer();
-                    }
-                    else
-                    {
-                        // guess wrong but not game over, continue...
-                        state.newFail = fail;
+                        let fail = state.getFail + 1;
+                        state.newHistory = {...history, [guess]: 'red'};
+                        if (fail === 11) 
+                        {
+                            // Game over and start new game
+                            stopTimer();
+                            alert("Game over! You have guessed " + String(state.getSuccess) + " words!");
+                            state.newFail = 0;
+                            state.newSuccess = 0;
+                            state.newHiddenLetters = {};
+                            state.newFullWord = '';
+                            state.newGuessingWord = '';
+                            state.newTimer = 60;
+                            state.newHistory = {};
+                            const newData = Api.getData();
+                            newData.then((data) => {
+                                state.newWord = data[0]
+                            });
+                            startTimer();
+                        }
+                        else
+                        {
+                            // guess wrong but not game over, continue...
+                            state.newFail = fail;
+                        }
                     }
                 }
                 else
                 {
                     // guess right
-                    if (Object.keys(after_guess_hidden_letters).length === 0)
+                    if (!checkHistory(guess, history))
                     {
-                        // There is no hidden letter left and give a new word
-                        state.newSuccess = state.getSuccess + 1;
-                        state.newGuessingWord = state.getFullWord;
-                        const newData = Api.getData();
-                        newData.then((data) => {
-                            state.newWord = data[0]
-                        });
-                        state.newFullWord = '';
-                        state.newHiddenLetters = {};
-                    }
-                    else
-                    {
-                        // There are still hidden letters left and continue working on the current word
-                        let fullWord = state.getFullWord;
-                        let afterGuessWord = fullWord;
-                        for (let index in after_guess_hidden_letters)
+                        if (Object.keys(after_guess_hidden_letters).length === 0)
                         {
-                            afterGuessWord = afterGuessWord.slice(0, index) + '_' + afterGuessWord.slice(parseInt(index) + 1);
+                            // There is no hidden letter left and give a new word
+                            state.newHistory = {...history, [guess]: 'blue'};
+                            state.newSuccess = state.getSuccess + 1;
+                            state.newGuessingWord = state.getFullWord;
+                            const newData = Api.getData();
+                            newData.then((data) => {
+                                state.newWord = data[0]
+                            });
+                            state.newHistory = {};
+                            state.newFullWord = '';
+                            state.newHiddenLetters = {};
                         }
-                        state.newGuessingWord = afterGuessWord;
-                        state.newHiddenLetters = after_guess_hidden_letters;
+                        else
+                        {
+                            // There are still hidden letters left and continue working on the current word
+                            let fullWord = state.getFullWord;
+                            let afterGuessWord = fullWord;
+                            for (let index in after_guess_hidden_letters)
+                            {
+                                afterGuessWord = afterGuessWord.slice(0, index) + '_' + afterGuessWord.slice(parseInt(index) + 1);
+                            }
+                            state.newGuessingWord = afterGuessWord;
+                            state.newHiddenLetters = after_guess_hidden_letters;
+                            state.newHistory = {...history, [guess]: 'blue'};
+                        }
                     }
                 }
                 state.newEmptyInput = true;
@@ -349,6 +396,7 @@ const Controller = ((view, model)=>{
             state.newHiddenLetters = {};
             state.newFullWord = '';
             state.newGuessingWord = '';
+            state.newHistory = {};
             stopTimer();
             state.newTimer = 60;
             const newData = Api.getData();
