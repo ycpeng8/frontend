@@ -65,6 +65,10 @@ const View = (()=>{
         return fail_tmp;
     }
 
+    const emptyInput = ()=>{
+        document.getElementById("guessText").value = "";
+    }
+
     const render = (ele, template)=>{
         ele.innerHTML = template;
     }
@@ -73,19 +77,25 @@ const View = (()=>{
         domSelector,
         createWordTmp,
         createFailTmp,
+        emptyInput,
         render
     }
 })();
 
 const Model = ((api, view)=>{
-    const { domSelector, createWordTmp, createFailTmp, render } = view;
+    const { domSelector, createWordTmp, createFailTmp, emptyInput, render } = view;
     const { getData } = api;
 
     class State{
         constructor(){
             this._fail = 0;
             this._word = '';
-            this._hidden_index = [];
+            this._hidden_letters = {};
+            // hidden_letters {key: index, value: letter}
+            this._success = 0;
+            this._empty_input = true;
+            this._guessing_word = '';
+            this._full_word = '';
         }
 
         get getFail(){
@@ -104,14 +114,84 @@ const Model = ((api, view)=>{
         }
 
         set newWord(newWord){
+            // randomly conseal letters
+            let hidden_letters = {};
+            let hidden_letters_index = [];
+            let word_length = newWord.length;
+            let hidden_letters_num = Math.floor(Math.random() * word_length);
+
+            this._full_word = newWord;
+
+            // make sure there is at least one hidden letter and not all letters are hidden
+            if (hidden_letters_num === 0) 
+            {
+                hidden_letters_num = 1;
+            } else if (hidden_letters_num === word_length)
+            {
+                hidden_letters_num = word_length - 1;
+            }
+
+            console.log(newWord);
+            for (let i = 0; i < hidden_letters_num; i++) {
+                let randomIndex = Math.floor(Math.random() * word_length);
+                if (!hidden_letters_index.includes(randomIndex)) {
+                    hidden_letters_index.push(randomIndex);
+                    hidden_letters[randomIndex] = newWord[randomIndex];
+                    newWord = newWord.slice(0, randomIndex) + '_' + newWord.slice(randomIndex + 1);
+                }
+            }
+            console.log(hidden_letters);
+            
             this._word = newWord;
+            this._hidden_letters = hidden_letters;
+            // render word
             let word_selector = document.querySelector(domSelector.word);
             let word_tmp = createWordTmp(this._word);
             render(word_selector, word_tmp);
         }
 
-        get getHiddenIndex(){
-            return this._hidden_index;
+        get getGuessingWord(){
+            return this._guessing_word;
+        }
+
+        set newGuessingWord(newWord){
+            this._guessing_word = newWord;
+            let word_selector = document.querySelector(domSelector.word);
+            let word_tmp = createWordTmp(this._guessing_word);
+            render(word_selector, word_tmp);
+        }
+
+        get getFullWord(){
+            return this._full_word;
+        }
+
+        set newFullWord(newWord){
+            this._full_word = newWord;
+        }
+
+        get getHiddenLetters(){
+            return this._hidden_letters;
+        }
+
+        set newHiddenLetters(newLetters){ 
+            this._hidden_letters = newLetters;
+        }
+
+        get getSuccess(){
+            return this._success;
+        }
+
+        set newSuccess(newNum){
+            this._success = newNum;
+        }
+
+        get getEmptyInput(){
+            return this._empty_input;
+        }
+
+        set newEmptyInput(newBool){
+            emptyInput();
+            this._empty_input = newBool;
         }
 
     }
@@ -143,8 +223,66 @@ const Controller = ((view, model)=>{
         const btn = document.querySelector(domSelector.btn);
 
         userGuess.addEventListener('keyup', ({key}) => {
-            if (key === "Enter") {
+            if (key === "Enter") 
+            {
                 let guess = userGuess.value;
+                let hidden_letters = state.getHiddenLetters;
+                let after_guess_hidden_letters = {};
+                Object.keys(hidden_letters).filter(key => hidden_letters[key] !== guess )
+                                           .forEach(key => after_guess_hidden_letters[key] = hidden_letters[key]);
+                if (Object.keys(after_guess_hidden_letters).length === Object.keys(hidden_letters).length) 
+                {
+                    // guess wrong
+                    let fail = state.getFail + 1;
+                    if (fail === 11) 
+                    {
+                        // Game over and start new game
+                        alert("Game over! You have guessed " + String(state.getSuccess) + " words!");
+                        state.newFail = 0;
+                        state.newSuccess = 0;
+                        state.newHiddenLetters = {};
+                        state.newFullWord = '';
+                        state.newGuessingWord = '';
+                        const newData = Api.getData();
+                        newData.then((data) => {
+                            state.newWord = data[0]
+                        });
+                    }
+                    else
+                    {
+                        // guess wrong but not game over, continue...
+                        state.newFail = fail;
+                    }
+                }
+                else
+                {
+                    // guess right
+                    if (Object.keys(after_guess_hidden_letters).length === 0)
+                    {
+                        // There is no hidden letter left and give a new word
+                        state.newSuccess = state.getSuccess + 1;
+                        state.newGuessingWord = state.getFullWord;
+                        const newData = Api.getData();
+                        newData.then((data) => {
+                            state.newWord = data[0]
+                        });
+                        state.newFullWord = '';
+                        state.newHiddenLetters = {};
+                    }
+                    else
+                    {
+                        // There are still hidden letters left and continue working on the current word
+                        let fullWord = state.getFullWord;
+                        let afterGuessWord = fullWord;
+                        for (let index in after_guess_hidden_letters)
+                        {
+                            afterGuessWord = afterGuessWord.slice(0, index) + '_' + afterGuessWord.slice(parseInt(index) + 1);
+                        }
+                        state.newGuessingWord = afterGuessWord;
+                        state.newHiddenLetters = after_guess_hidden_letters;
+                    }
+                }
+                state.newEmptyInput = true;
             }
         });
 
@@ -168,8 +306,3 @@ const Controller = ((view, model)=>{
 })(View, Model);
 
 Controller.bootstrap();
-
-
-// function showWarning() {
-//     alert("This is a browser warning message.");
-// }
