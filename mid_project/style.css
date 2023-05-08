@@ -17,6 +17,10 @@ body {
     justify-content: center;
 }
 
+.timer {
+    font-weight: bold;
+}
+
 .fail_ratio {
     font-size: 14px;
 }

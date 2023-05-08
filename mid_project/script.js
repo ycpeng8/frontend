@@ -47,6 +47,7 @@ const Api = (()=>{
 
 const View = (()=>{
     let domSelector = {
+        timeLeft: "#timeLeft",
         fail: "#fail",
         word: "#word",
         inputBox: "#guessText",
@@ -69,6 +70,12 @@ const View = (()=>{
         document.getElementById("guessText").value = "";
     }
 
+    const timerTmp = (time)=>{
+        let timer_tmp = '';
+        timer_tmp += `${time}`;
+        return timer_tmp;
+    }
+
     const render = (ele, template)=>{
         ele.innerHTML = template;
     }
@@ -78,12 +85,13 @@ const View = (()=>{
         createWordTmp,
         createFailTmp,
         emptyInput,
+        timerTmp,
         render
     }
 })();
 
 const Model = ((api, view)=>{
-    const { domSelector, createWordTmp, createFailTmp, emptyInput, render } = view;
+    const { domSelector, createWordTmp, createFailTmp, emptyInput, timerTmp, render } = view;
     const { getData } = api;
 
     class State{
@@ -96,6 +104,7 @@ const Model = ((api, view)=>{
             this._empty_input = true;
             this._guessing_word = '';
             this._full_word = '';
+            this._timer = 60;
         }
 
         get getFail(){
@@ -194,6 +203,17 @@ const Model = ((api, view)=>{
             this._empty_input = newBool;
         }
 
+        get getTimer(){
+            return this._timer;
+        }
+
+        set newTimer(newTime){
+            this._timer = newTime;
+            let timer_selector = document.querySelector(domSelector.timeLeft);
+            let timer_tmp = timerTmp(this._timer);
+            render(timer_selector, timer_tmp);
+        }
+
     }
 
     return {
@@ -206,22 +226,55 @@ const Controller = ((view, model)=>{
     const {domSelector} = view;
     const {State, getData} = model;
 
-    let word = '';
-
     const state = new State();
+    let timeId = null;
+
+    // timer control
+    const startTimer = () => {
+        timeId = setInterval(() => {
+            let timeLeft = state.getTimer - 1;
+            if (timeLeft < 0) {
+                alert("Time Out! You have guessed " + String(state.getSuccess) + " words!");
+                state.newFail = 0;
+                state.newSuccess = 0;
+                state.newHiddenLetters = {};
+                state.newFullWord = '';
+                state.newGuessingWord = '';
+                state.newTimer = 60;
+                const newData = Api.getData();
+                newData.then((data) => {
+                    state.newWord = data[0]
+                });
+                clearInterval(timeId);
+                startTimer();
+            }
+            else
+            {
+                state.newTimer = timeLeft;
+            }
+        }, 1000);
+    }
+
+    const stopTimer = () => {
+        clearInterval(timeId);
+    }
+
     const init = () => {
         state.newFail = 0;
         const newData = Api.getData();
         newData.then((data) => {
             state.newWord = data[0]
         });
+        startTimer();
     }
 
     // Add event listeners
     const addGuess = () => {
         const userGuess = document.querySelector(domSelector.inputBox);
         const btn = document.querySelector(domSelector.btn);
+        let timeId = null;
 
+        // inputBox control
         userGuess.addEventListener('keyup', ({key}) => {
             if (key === "Enter") 
             {
@@ -237,16 +290,19 @@ const Controller = ((view, model)=>{
                     if (fail === 11) 
                     {
                         // Game over and start new game
+                        stopTimer();
                         alert("Game over! You have guessed " + String(state.getSuccess) + " words!");
                         state.newFail = 0;
                         state.newSuccess = 0;
                         state.newHiddenLetters = {};
                         state.newFullWord = '';
                         state.newGuessingWord = '';
+                        state.newTimer = 60;
                         const newData = Api.getData();
                         newData.then((data) => {
                             state.newWord = data[0]
                         });
+                        startTimer();
                     }
                     else
                     {
@@ -286,17 +342,22 @@ const Controller = ((view, model)=>{
             }
         });
 
+        // new game button control
         btn.addEventListener('click', ()=>{
             state.newFail = 0;
             state.newSuccess = 0;
             state.newHiddenLetters = {};
             state.newFullWord = '';
             state.newGuessingWord = '';
+            stopTimer();
+            state.newTimer = 60;
             const newData = Api.getData();
             newData.then((data) => {
                 state.newWord = data[0]
             });
+            startTimer();
         });
+
     }
     
     const bootstrap = () => {
